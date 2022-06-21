@@ -12,41 +12,97 @@ import {
   Hidden,
   InputAdornment,
   TextField,
-  Typography
+  Typography,
+  Paper,
 } from "@mui/material";
+import Park from '@mui/icons-material/Park';
+import Forest from '@mui/icons-material/Forest';
+import Landscape from '@mui/icons-material/Landscape';
+import Waves from '@mui/icons-material/Waves';
+import Water from '@mui/icons-material/Water';
+import AcUnit from '@mui/icons-material/AcUnit';
+import WbSunny from '@mui/icons-material/WbSunny';
+import Tsunami from '@mui/icons-material/Tsunami';
+import Opacity from '@mui/icons-material/Opacity';
+import Cloud from '@mui/icons-material/Cloud';
+import WbSunnyOutlined from '@mui/icons-material/WbSunnyOutlined';
+import Grain from '@mui/icons-material/Grain';
+import Thunderstorm from '@mui/icons-material/Thunderstorm';
+import Tornado from '@mui/icons-material/Tornado';
+import Grass from '@mui/icons-material/Grass';
+import ModeStandby from '@mui/icons-material/ModeStandby';
+import LocalFireDepartment from '@mui/icons-material/LocalFireDepartment';
 import { useCallback, useState, useEffect, useMemo } from "react";
 import { Person, humanRace } from "./persons";
-import { humanCity, northRegion, southRegion, WorldMap } from "./world";
+import { humanCity, northRegion, southRegion, eastRegion, westRegion, WorldMap } from "./world";
 import { Calendar } from "./rpg";
 import "./styles.css";
 
 const calendar = new Calendar();
 const worldMap = new WorldMap({});
 worldMap.regions.push(northRegion);
-// worldMap.regions.push(southRegion);
+worldMap.regions.push(southRegion);
+worldMap.regions.push(westRegion);
+worldMap.regions.push(eastRegion);
 
-const RegionUI = ({ region, onClick }) => {
+const WeatherUI = ({ weather, night }) => {
+  const isSunny = weather.temperature > 20
+  const isSnow = weather.temperature < 0
+  const icon = isSunny ? <WbSunny /> : isSnow ? <AcUnit /> : <WbSunnyOutlined />
+  return 
+  <Stack direction="row" spacing={1}>
+    <Chip icon={night ? <NightsStay /> : icon} label={`${weather.temperature} °C`} color="primary" />
+    <Chip icon={<Cloud />} label={`${weather.cloudy?.toFixed(1)}%`} color="primary" />
+    <Chip icon={<Opacity />} label={`${weather.humidity?.toFixed(1)}%`} color="primary" />
+    <Chip icon={<Waves />} label={`${weather.wind?.toFixed(1)}km`} color="primary" />
+  </Stack>
+}
+
+const ClimateUI = ({ event }) => {
+  return event && <>
+  <Typography color="text.secondary">
+  {event.type === 'hurricane' && <Tornado />}
+  {event.type === 'tsunami' && <Tsunami />}
+  {event.type === 'raining' && event.intensity > 0.5 ? <Thunderstorm /> : <Grain />}
+  {event.type === 'snowing' && <AcUnit />}
+   {event.name}
+  </Typography>
+  </>
+}
+
+const SubRegionElementUI = ({ element }) => {
+  return <>
+  {element.type === 'tree' && <Park />}
+  {element.type === 'grass' && <Grass />}
+  {element.type === 'rock' && <ModeStandby />}
+  </>
+}
+
+const RegionElementUI = ({ element }) => {
+  return <Paper>
+  <Typography color="text.secondary">
+  {element.type === 'forest' && <Forest />}
+  {element.type === 'mountain' && <Landscape />}
+  {element.type === 'river' && <Water />}
+  {element.type === 'lake' && <Water />}
+   {element.type}
+  </Typography>
+  <Box>
+    {element.elements.map((e, i) => <SubRegionElementUI key={i} element={e} />)}
+  </Box>
+  </Paper>
+}
+
+const RegionUI = ({ region, night, onClick }) => {
   return (
-    <Card>
+    <Card className={`terrain-${region.terrain.type}`}>
       <CardHeader title={region.name} subheader={region.currentSeason.name} />
       <CardContent>
-        <Typography color="text.secondary">Climate:</Typography>
-        <Typography variant="body2">{region.climateEvent?.name}</Typography>
+        <WeatherUI weather={region.currentWeather} night={night} />
         <Divider style={{ margin: "5px 0" }} />
-        <Typography color="text.secondary">Weather:</Typography>
-        <Typography variant="body2">
-          {region.currentWeather.temperature} C* |
-          {region.currentWeather.cloudy?.toFixed(1)} cdy |
-          {region.currentWeather.humidity?.toFixed(1)} hmt |
-          {region.currentWeather.wind?.toFixed(1)} wind
-        </Typography>
+        <ClimateUI event={region.climateEvent} />
         <Divider style={{ margin: "5px 0" }} />
-        <Typography color="text.secondary">Fauna:</Typography>
-        <Typography variant="body2">{region.fauna}</Typography>
-        <Divider style={{ margin: "5px 0" }} />
-        <Typography color="text.secondary">Flora:</Typography>
-        <Typography variant="body2">{region.flora}</Typography>
-        <Divider style={{ marginTop: 5 }} />
+        {region.elements.map((element, i) => <RegionElementUI key={i} element={element} />)}
       </CardContent>
       <CardActions>
         <Button size="small" onClick={() => onClick(region)}>
@@ -189,7 +245,7 @@ export default function App() {
         </Grid>
         {map.regions.map((region, i) => (
           <Grid key={i} item xs={6}>
-            <RegionUI region={region} />
+            <RegionUI region={region} night={map.isNight()} />
           </Grid>
         ))}
         {/*<Grid item xs={12}>

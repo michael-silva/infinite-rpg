@@ -1,5 +1,6 @@
-import { RainingClimate, TsunamiClimate } from "./climates";
+import { RainingClimate, HuricaneClimate } from "./climates";
 import { calcChance, randomFloat, randomInt, Rectangle } from "./utils";
+import { MountainField, FlorestField, FlatlandTerrain } from "./world-elements";
 
 class Weather {
   constructor(config) {
@@ -9,10 +10,13 @@ class Weather {
   _updateWeather(datetime, world) {
     const { temperature, cloudy, wind, humidity } = this.config;
     if (world.isDay()) {
-      this.temperature =
-        datetime.hour < temperature.day.maxHour
-          ? randomInt(this.temperature, temperature.day.max)
-          : randomInt(temperature.day.min, this.temperature);
+      const newTemperature = randomInt(temperature.day.min, temperature.day.max)
+      if(datetime.hour < temperature.day.maxHour && newTemperature > this.temperature) {
+        this.temperature = newTemperature
+      }
+      if(datetime.hour > temperature.day.maxHour && newTemperature < this.temperature) {
+        this.temperature = newTemperature
+      }
     } else {
       this.temperature = randomInt(
         temperature.night.min,
@@ -93,46 +97,40 @@ export class WorldMap {
 class RegionSeason {
   constructor({ name, weather, period }) {
     this.name = name;
-    this.period = period;
+    this._period = period;
     this._currentWeather = new Weather(weather);
-    this._climateEvents = [
-      new TsunamiClimate({ chance: 0.3 }),
-      new RainingClimate({ chance: 0.5 })
-    ];
   }
 
   get currentWeather() {
     return this._currentWeather;
   }
 
-  get climateEvent() {
-    return this._currentClimateEvent;
+  hasEnd(datetime) {
+    return datetime.dayOfTheYear >= this._period.end
   }
 
   update(datetime, world) {
     this._currentWeather.update(datetime, world);
-    if (this.climateEvent) {
-      this.climateEvent.update(datetime, world);
-      if (this.climateEvent.hasFinished()) {
-        this._currentClimateEvent = null;
-      }
-    } else {
-      this._climateEvents.forEach((event) => {
-        if (!this.climateEvent && event.activate()) {
-          this._currentClimateEvent = event;
-        }
-      });
-    }
   }
 }
 
 class MapRegion {
-  constructor({ seasons, name }) {
+  constructor({ seasons, elements, towns, name, dungeons }) {
     this.name = name;
     this._currentSeasonIndex = 0;
-    this.seasons = seasons;
-    this.fauna = [];
-    this.flora = [];
+    this.seasons = seasons || [];
+    this.towns = towns || [];
+    this.dungeons = dungeons || [];
+    this.terrain = new FlatlandTerrain({ type: 'grass' })
+    this.elements = [
+      new FlorestField({ }),
+      new MountainField({ }),
+    ];
+    this._generalChanceForClimateEvents = 2
+    this._climateEvents = [
+      new HuricaneClimate({ chance: 0.3 }),
+      new RainingClimate({ chance: 0.5 })
+    ];
   }
 
   get currentSeason() {
@@ -142,178 +140,155 @@ class MapRegion {
   get currentWeather() {
     return this.currentSeason.currentWeather;
   }
+
   get climateEvent() {
-    return this.currentSeason.climateEvent;
+    return this._currentClimateEvent;
+  }
+  
+  addDamage(damage) {
+    this.elements.forEach(element =>element.applyDamage(damage))
   }
 
-  update(datetime, world) {
-    if (datetime.dayOfTheYear === this.currentSeason.period.end) {
+  addWeatherModifier() {
+
+  }
+
+  _updateSeason(datetime, world) {
+    if (this.currentSeason.hasEnd(datetime)) {
       this._currentSeasonIndex =
         (this._currentSeasonIndex + 1) % this.seasons.length;
     }
     this.currentSeason.update(datetime, world);
   }
-}
 
-export const northRegion = new MapRegion({
-  name: "Noth Region",
-  seasons: [
-    new RegionSeason({
-      name: "winter",
-      period: {
-        start: 0,
-        end: 111
-      },
-      weather: {
-        humidity: { chance: 0.7, volume: 0.3 },
-        wind: { chance: 0, volume: 0 },
-        cloudy: { chance: 0.3, volume: 0.5 },
-        temperature: {
-          day: { min: 20, max: 40, maxHour: 12 },
-          night: { min: 15, max: 20 }
-        }
+  _updateGeneralClimateEventChance() {
+    this._generalChanceForClimateEvents += 0.01
+  }
+
+  _updateClimateEvents(datetime, world) {
+    if (this.climateEvent) {
+      this.climateEvent.update(datetime, this);
+      if (this.climateEvent.hasFinished()) {
+        this._currentClimateEvent = null;
+        this._generalChanceForClimateEvents = 0
       }
-    }),
-    new RegionSeason({
-      name: "spring",
-      period: {
-        start: 111,
-        end: 203
-      },
-      weather: {
-        humidity: { chance: 0.7, volume: 0.3 },
-        wind: { chance: 0, volume: 0 },
-        cloudy: { chance: 0.3, volume: 0.5 },
-        temperature: {
-          day: { min: 20, max: 40, maxHour: 12 },
-          night: { min: 15, max: 20 }
-        }
+    } else if (Math.random() < this._generalChanceForClimateEvents)  {
+      const [[index, chance]] = this._climateEvents.map((event, i) => [i, event.classify(datetime, this)]).sort((a, b) => a[1] > b[1] ? 1 : -1);
+      if (chance > this._climateEvents[index].chance) {
+        this._currentClimateEvent = this._climateEvents[index];
+        this.climateEvent.activate(datetime, this)
       }
-    }),
-    new RegionSeason({
-      name: "summer",
-      period: {
-        start: 203,
-        end: 294
-      },
-      weather: {
-        humidity: { chance: 0.7, volume: 0.3 },
-        wind: { chance: 0, volume: 0 },
-        cloudy: { chance: 0.3, volume: 0.5 },
-        temperature: {
-          day: { min: 20, max: 40, maxHour: 12 },
-          night: { min: 15, max: 20 }
-        }
-      }
-    }),
-    new RegionSeason({
-      name: "fall",
-      period: {
-        start: 294,
-        end: 352
-      },
-      weather: {
-        humidity: { chance: 0.7, volume: 0.3 },
-        wind: { chance: 0, volume: 0 },
-        cloudy: { chance: 0.3, volume: 0.5 },
-        temperature: {
-          day: { min: 20, max: 40, maxHour: 12 },
-          night: { min: 15, max: 20 }
-        }
-      }
-    }),
-    new RegionSeason({
-      name: "winter",
-      period: {
-        start: 352,
-        end: 366
-      },
-      weather: {
-        humidity: { chance: 0.7, volume: 0.3 },
-        wind: { chance: 0, volume: 0 },
-        cloudy: { chance: 0.3, volume: 0.5 },
-        temperature: {
-          day: { min: 20, max: 40, maxHour: 12 },
-          night: { min: 15, max: 20 }
-        }
-      }
-    })
-  ]
-});
-export const southRegion = new MapRegion({
-  seasons: [
-    {
-      name: "winter",
-      period: {
-        start: 0,
-        end: 111
-      },
-      sunsiseHour: 7,
-      sunsetHour: 20
-    },
-    {
-      name: "spring",
-      period: {
-        start: 111,
-        end: 203
-      },
-      sunsiseHour: 7,
-      sunsetHour: 20
-    },
-    {
-      name: "summer",
-      period: {
-        start: 203,
-        end: 294
-      },
-      sunsiseHour: 7,
-      sunsetHour: 20
-    },
-    {
-      name: "fall",
-      period: {
-        start: 294,
-        end: 352
-      },
-      sunsiseHour: 7,
-      sunsetHour: 20
-    },
-    {
-      name: "winter",
-      period: {
-        start: 352,
-        end: 366
-      },
-      sunsiseHour: 7,
-      sunsetHour: 20
     }
-  ],
-  weathersBySeason: {
-    summer: {
-      rain: { chance: 0.7, volume: 0.3 },
-      snowning: { chance: 0, volume: 0 },
-      cloudy: { chance: 0.3, volume: 0.5 },
-      temperature: { min: 20, max: 40 }
-    },
-    winter: {
-      rain: { chance: 0.7, volume: 0.3 },
-      snowning: { chance: 0, volume: 0 },
-      cloudy: { chance: 0.3, volume: 0.5 },
-      temperature: { min: 20, max: 40 }
-    },
-    fall: {
-      rain: { chance: 0.7, volume: 0.3 },
-      snowning: { chance: 0, volume: 0 },
-      cloudy: { chance: 0.3, volume: 0.5 },
-      temperature: { min: 20, max: 40 }
-    },
-    spring: {
-      rain: { chance: 0.7, volume: 0.3 },
-      snowning: { chance: 0, volume: 0 },
-      cloudy: { chance: 0.3, volume: 0.5 },
-      temperature: { min: 20, max: 40 }
+    else {
+      this._updateGeneralClimateEventChance()
     }
   }
+
+  update(datetime, world) {
+    this._updateSeason(datetime, world)
+    this._updateClimateEvents(datetime, world)
+    this.terrain.update(datetime, this)
+    this.elements.forEach(element =>element.update(datetime, this))
+  }
+}
+
+const seasons = [
+  new RegionSeason({
+    name: "winter",
+    period: {
+      start: 0,
+      end: 111
+    },
+    weather: {
+      humidity: { chance: 0.7, volume: 0.3 },
+      wind: { chance: 0.5, volume: 0 },
+      cloudy: { chance: 0.3, volume: 0.5 },
+      temperature: {
+        day: { min: 20, max: 40, maxHour: 12 },
+        night: { min: 15, max: 20 }
+      }
+    }
+  }),
+  new RegionSeason({
+    name: "spring",
+    period: {
+      start: 111,
+      end: 203
+    },
+    weather: {
+      humidity: { chance: 0.7, volume: 0.3 },
+      wind: { chance: 0, volume: 0 },
+      cloudy: { chance: 0.3, volume: 0.5 },
+      temperature: {
+        day: { min: 20, max: 40, maxHour: 12 },
+        night: { min: 15, max: 20 }
+      }
+    }
+  }),
+  new RegionSeason({
+    name: "summer",
+    period: {
+      start: 203,
+      end: 294
+    },
+    weather: {
+      humidity: { chance: 0.7, volume: 0.3 },
+      wind: { chance: 0, volume: 0 },
+      cloudy: { chance: 0.3, volume: 0.5 },
+      temperature: {
+        day: { min: 20, max: 40, maxHour: 12 },
+        night: { min: 15, max: 20 }
+      }
+    }
+  }),
+  new RegionSeason({
+    name: "fall",
+    period: {
+      start: 294,
+      end: 352
+    },
+    weather: {
+      humidity: { chance: 0.7, volume: 0.3 },
+      wind: { chance: 0, volume: 0 },
+      cloudy: { chance: 0.3, volume: 0.5 },
+      temperature: {
+        day: { min: 20, max: 40, maxHour: 12 },
+        night: { min: 15, max: 20 }
+      }
+    }
+  }),
+  new RegionSeason({
+    name: "winter",
+    period: {
+      start: 352,
+      end: 366
+    },
+    weather: {
+      humidity: { chance: 0.7, volume: 0.3 },
+      wind: { chance: 0, volume: 0 },
+      cloudy: { chance: 0.3, volume: 0.5 },
+      temperature: {
+        day: { min: 20, max: 40, maxHour: 12 },
+        night: { min: 15, max: 20 }
+      }
+    }
+  })
+]
+export const northRegion = new MapRegion({
+  name: "North Region",
+  seasons: [...seasons]
+});
+export const southRegion = new MapRegion({
+  name: "South Region",
+  seasons: [...seasons]
+});
+export const westRegion = new MapRegion({
+  name: "West Region",
+  seasons: [...seasons]
+});
+export const eastRegion = new MapRegion({
+  name: "East Region",
+  seasons: [...seasons]
 });
 
 
