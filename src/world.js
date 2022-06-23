@@ -34,7 +34,8 @@ class Weather {
 }
 
 export class WorldMap {
-  constructor({ regions } = {}) {
+  constructor({ regions } = {  }) {
+    this._requestSunriseSunsetData();
     this.area = Rectangle.createFrom([0, 0, 100, 100]);
     const center = this.area.getCenter();
     this.regions = regions || [];
@@ -44,7 +45,7 @@ export class WorldMap {
     };
 
     this.sunset = {
-      hour: 20,
+      hour: 18,
       position: [this.area.width, center[1]]
     };
 
@@ -75,22 +76,43 @@ export class WorldMap {
 
   _updateSun(datetime) {
     if (this.sun.visible) {
-      this.sun.position[0] += this.sun.direction[0] * this.sun.speed;
-      this.sun.position[1] += this.sun.direction[1] * this.sun.speed;
-      if (this.sunset.hour <= datetime.hour) {
-        this.sun.visible =
-          Math.random() < calcChance(this.sunset.hour, 23, datetime.hour);
-      }
+        this.sun.position[0] += this.sun.direction[0] * this.sun.speed
+        this.sun.position[1] += this.sun.direction[1] * this.sun.speed
     } else if (this.sunrise.hour <= datetime.hour) {
-      this.sun.visible =
-        Math.random() < calcChance(this.sunrise.hour, 10, datetime.hour);
-      this.sun.position = [...this.sunrise.position];
+        this.sun.position = [...this.sunrise.position]
     }
+
+    this.sun.visible =
+        datetime.hour >= this.sunrise.hour &&
+        datetime.hour <= this.sunset.hour
   }
 
   update(datetime) {
     this._updateSun(datetime);
     this.regions.forEach((region) => region.update(datetime, this));
+  }
+
+  _requestSunriseSunsetData(){
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+        const api = 'https://api.sunrise-sunset.org/json'
+        const params = new URLSearchParams({
+            lat: coords.latitude,
+            lng: coords.longitude,
+            formatted: 0,
+        })
+
+        
+        const results =
+            JSON.parse(localStorage.getItem('sun-data') ?? null) ||
+            (await fetch(`${api}?${params}`).then((res) => res.json()))?.results
+
+        if (results) {
+            this.sunrise.hour = new Date(results.sunrise).getHours()
+            this.sunset.hour = new Date(results.sunset).getHours()
+            
+            localStorage.setItem('sun-data', JSON.stringify(results))
+        }
+    })
   }
 }
 
