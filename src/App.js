@@ -214,6 +214,7 @@ const PlayerUI = ({ person, onChange }) => {
 
 export default function App() {
   const [ticks, setTicks] = useState(0);
+  const [sunData, setSunData] = useState(null);
   const map = useMemo(() => worldMap);
   // const [player, setPlayer] = useState(() => humanRace.generatePerson());
   // const [persons, setPersons] = useState([]);
@@ -228,6 +229,29 @@ export default function App() {
     // persons.forEach((person) => person.update(calendar));
     setTicks(ticks + 1);
   }, [map, ticks]);
+
+  const requestSunriseSunset = () => {
+      navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+          const api = 'https://api.sunrise-sunset.org/json'
+          const params = new URLSearchParams({
+              lat: coords.latitude,
+              lng: coords.longitude,
+              formatted: 0,
+          })
+
+          const data = await fetch(`${api}?${params}`).then((res) => res.json())
+
+          if (data.results) {
+              setSunData(data.results)
+          }
+      })
+  }
+
+  useEffect(() => {
+      if (!sunData) {
+          requestSunriseSunset()
+      }
+  }, [])
 
   useEffect(() => {
     const timeout = setTimeout(handleTick, 1000);
